@@ -11,7 +11,7 @@ class ArticlesController < ApplicationController
   after_action :verify_authorized
 
   def feed
-    skip_authorization
+    authorize(Article)
 
     @articles = Article.feed.order(published_at: :desc).page(params[:page].to_i).per(12)
     @articles = if params[:username]

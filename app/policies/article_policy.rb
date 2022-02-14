@@ -31,9 +31,29 @@ class ArticlePolicy < ApplicationPolicy
   end
   # rubocop:enable Lint/MissingSuper
 
+  def feed?
+    true
+  end
+
+  def create?
+    require_user_in_good_standing!
+    true
+  end
+
   def update?
-    require_user!
+    require_user_in_good_standing!
+
     user_author? || user_super_admin? || user_org_admin? || user_any_admin?
+  end
+
+  def stats?
+    require_user!
+    user_author? || user_super_admin? || user_org_admin?
+  end
+
+  def subscriptions?
+    require_user!
+    user_author? || user_super_admin?
   end
 
   def admin_unpublish?
@@ -41,37 +61,22 @@ class ArticlePolicy < ApplicationPolicy
     user_any_admin?
   end
 
-  # @note It is likely that we want this to mirror `:create?` in the future.  As it stands, we can
-  #       use this value to "triangulate" towards a simplifying solution to
-  #       https://github.com/forem/forem/issues/16529 (Also, I added this comment so that this code
-  #       appears with the pull request)
-  #
-  # @note For backwards compatability purposes, we're not checking if there's a user.
-  def new?
-    true
-  end
-
-  def create?
+  def destroy?
     require_user!
-    !user_suspended?
+    user_author? || user_super_admin? || user_org_admin? || user_any_admin?
   end
 
-  alias delete_confirm? update?
+  alias new? create?
 
-  alias discussion_lock_confirm? update?
+  alias delete_confirm? destroy?
 
-  alias discussion_unlock_confirm? update?
+  alias discussion_lock_confirm? destroy?
 
-  alias destroy? update?
+  alias discussion_unlock_confirm? destroy?
 
   alias edit? update?
 
-  alias preview? new?
-
-  def stats?
-    require_user!
-    user_author? || user_super_admin? || user_org_admin?
-  end
+  alias preview? create?
 
   def permitted_attributes
     %i[title body_html body_markdown main_image published canonical_url
@@ -80,17 +85,20 @@ class ArticlePolicy < ApplicationPolicy
        archived]
   end
 
-  def subscriptions?
-    require_user!
-    user_author? || user_super_admin?
-  end
-
   private
+
+  def require_user_in_good_standing!
+    require_user!
+
+    return true unless user.suspended?
+
+    raise ApplicationPolicy::UserSuspendedError, I18n.t("policies.application_policy.you_have_a_suspended_account")
+  end
 
   def require_user!
     return if user
 
-    raise Pundit::NotAuthorizedError, I18n.t("policies.application_policy.you_must_be_logged_in")
+    raise ApplicationPolicy::UserRequiredError, I18n.t("policies.application_policy.you_must_be_logged_in")
   end
 
   def user_author?
